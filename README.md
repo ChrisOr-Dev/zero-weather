@@ -2,14 +2,14 @@
 
 Current weather and a 3-day forecast on the M5Stack CardputerZero's 320x170 screen. Data comes from [Open-Meteo](https://open-meteo.com/) (no API key needed) and refreshes every 15 minutes.
 
-![Main screen](docs/main.png)
+![Main screen](screenshots/main.png)
 
 ## Location
 
 - Uses the Cap LoRa-1262 GPS when it is enabled and has a fix.
 - Otherwise uses a fixed place you search for in Settings (geocoding by OpenStreetMap Nominatim). Default: Toronto.
 
-![Settings](docs/settings.png) ![Search results](docs/search-results.png)
+![Settings](screenshots/settings.png) ![Search results](screenshots/search-results.png)
 
 ## Keys
 

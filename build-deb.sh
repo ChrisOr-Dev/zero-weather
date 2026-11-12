@@ -4,7 +4,7 @@
 # Output: zero-weather_<version>_all.deb in this folder.
 set -eu
 cd "$(dirname "$0")"
-VERSION=1.0.0
+VERSION=$(python3 -c "import json; print(json.load(open('app-builder.json'))['version'])")
 PKG=zero-weather
 MAINTAINER=${1:?usage: build-deb.sh "Name <email>"}
 
