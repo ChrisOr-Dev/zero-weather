@@ -28,7 +28,7 @@ From the CardputerZero AppStore (share code `WTHR`), or build the package yourse
 
 ```sh
 sh build-deb.sh "Your Name <you@example.com>"
-sudo dpkg -i zero-weather_1.0.0_all.deb
+sudo dpkg -i zero-weather_1.0.1_all.deb
 ```
 
 For development, copy this folder to `~/zero-weather` on the device and run `sudo sh ~/zero-weather/install.sh` to register it with the launcher.
