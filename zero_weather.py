@@ -6,7 +6,7 @@ a fix, otherwise the fixed location in ~/.config/zero-weather.json (set from
 the in-app settings screen; Toronto if absent).
 
 Usage:
-  zero_weather.py                  run on the LCD (S settings, R refresh, ESC/q exit)
+  zero_weather.py                  run on the LCD (S settings, R refresh, hold ESC 3s to exit)
   zero_weather.py --fetch          fetch once and print the result
   zero_weather.py --preview out.png               render one frame to PNG
   zero_weather.py --make-icon out.png             write the 100x100 launcher icon
@@ -15,7 +15,6 @@ import json
 import math
 import os
 import select
-import struct
 import sys
 import threading
 import time
@@ -42,7 +41,7 @@ POLL = 15 * 60
 STALE_AFTER = 60 * 60
 FB = '/dev/fb0'
 KBD = '/dev/input/cardputer-zero-internal'
-KEY_ESC, KEY_Q, KEY_R, KEY_S = 1, 16, 19, 31
+KEY_ESC, KEY_R, KEY_S = 1, 19, 31
 
 FONT_DIRS = ['/usr/share/APPLaunch/share/font', os.path.dirname(os.path.abspath(__file__))]
 
@@ -358,7 +357,7 @@ def render(data, now=None, busy=False, error=None):
         age = now - fetched
         foot, col = f'updated {fmt_ago(age)}', WARN if age > STALE_AFTER else DIM
     d.text((12, H - 16), foot, font=F_SMALL, fill=col)
-    hint = 'S setup  R refresh  ESC'
+    hint = 'S setup  R refresh  hold ESC'
     d.text((W - 12 - d.textlength(hint, font=F_SMALL), H - 16), hint, font=F_SMALL, fill=LINE)
     return img
 
@@ -376,23 +375,6 @@ def make_icon(path):
     d.rounded_rectangle((4, 4, 96, 96), radius=20, fill=BG + (255,))
     draw_icon(d, 50, 52, 76, 'partly', True)
     img.save(path)
-
-
-def read_keys(fd):
-    """Key codes pressed since the last call, in order."""
-    if fd is None:
-        return []
-    size = struct.calcsize('llHHi')
-    try:
-        buf = os.read(fd, size * 64)
-    except BlockingIOError:
-        return []
-    pressed = []
-    for i in range(0, len(buf) - size + 1, size):
-        _, _, etype, code, value = struct.unpack_from('llHHi', buf, i)
-        if etype == 1 and value == 1:
-            pressed.append(code)
-    return pressed
 
 
 class Fetcher(threading.Thread):
@@ -425,17 +407,16 @@ class Fetcher(threading.Thread):
 def run():
     import signal
     signal.signal(signal.SIGTERM, signal.default_int_handler)
-    try:
-        kbd = os.open(KBD, os.O_RDONLY | os.O_NONBLOCK)
-    except OSError:
-        kbd = None
+    from hold_exit import Keyboard, ExitHold, bar, BAR_H
+    kbd, hold = Keyboard(KBD), ExitHold()
     fetcher = Fetcher()
     fetcher.start()
     last_key, frame, settings = None, None, None
     with open(FB, 'r+b', buffering=0) as fb:
         try:
             while True:
-                keys = read_keys(kbd)
+                keys = kbd.read()
+                now = time.time()
                 if settings:
                     for code in keys:
                         result = settings.handle(code)
@@ -444,14 +425,17 @@ def run():
                                 fetcher.wake.set()
                             settings, last_key = None, None
                             break
-                elif set(keys) & {KEY_ESC, KEY_Q}:
-                    break
+                elif KEY_ESC in keys:
+                    hold.press(now)
                 elif KEY_S in keys:
                     from settings_ui import Settings
                     settings = Settings()
+                    hold.cancel()
                 elif KEY_R in keys and not fetcher.busy:
                     fetcher.wake.set()
-                now = time.time()
+                progress = None if settings else hold.progress(now, KEY_ESC in kbd.down)
+                if progress is not None and progress >= 1:
+                    break
                 if settings:
                     if settings.dirty:
                         frame = to_rgb565(settings.render())
@@ -461,10 +445,14 @@ def run():
                         frame = to_rgb565(render(load(), now, fetcher.busy, fetcher.error))
                         last_key = key
                 fb.seek(0)
-                fb.write(frame)
+                if progress is None:
+                    fb.write(frame)
+                else:  # the countdown bar replaces the bottom rows
+                    fb.write(frame[:(H - BAR_H) * W * 2])
+                    fb.write(to_rgb565(bar(progress, W, F_DAY)))
                 if settings:
                     settings.tick()
-                time.sleep(0.05 if settings else 0.2)
+                time.sleep(0.05 if settings or progress is not None else 0.2)
         except KeyboardInterrupt:
             pass
         finally:

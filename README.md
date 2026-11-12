@@ -17,7 +17,7 @@ Current weather and a 3-day forecast on the M5Stack CardputerZero's 320x170 scre
 |--------|-----|--------|
 | Main | S | Settings |
 | Main | R | Refresh |
-| Main | ESC / Q | Exit |
+| Main | Hold ESC 3 s | Exit (a bar shows the countdown; let go to cancel) |
 | Settings | F / X | Move up / down |
 | Settings | ENTER | Toggle GPS / search / choose |
 | Settings | ESC | Back |

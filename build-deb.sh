@@ -16,7 +16,7 @@ APP=$ROOT/usr/share/$PKG
 L=$ROOT/usr/share/APPLaunch
 mkdir -p "$APP" "$L/bin" "$L/applications" "$L/share/images" "$ROOT/DEBIAN"
 
-install -m 644 zero_weather.py settings_ui.py "$APP/"
+install -m 644 zero_weather.py settings_ui.py hold_exit.py "$APP/"
 printf '#!/bin/sh\nexec /usr/bin/python3 /usr/share/%s/zero_weather.py "$@"\n' "$PKG" > "$L/bin/$PKG"
 chmod 755 "$L/bin/$PKG"
 install -m 644 zero-weather.desktop "$L/applications/$PKG.desktop"
