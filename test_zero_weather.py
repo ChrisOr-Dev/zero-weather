@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import zero_weather as zw
 
@@ -132,6 +133,16 @@ class SettingsTest(unittest.TestCase):
         s.tick(search=lambda q: [])
         self.assertEqual((s.state, s.results), ('results', []))
         self.assertIn('no results', s.msg)
+
+
+class TestNet(unittest.TestCase):
+    def test_ipv4_sorted_first(self):
+        import socket
+        import net
+        v6 = (socket.AF_INET6, 1, 6, '', ('::1', 443, 0, 0))
+        v4 = (socket.AF_INET, 1, 6, '', ('1.2.3.4', 443))
+        with mock.patch.object(net, '_getaddrinfo', return_value=[v6, v6, v4]):
+            self.assertEqual(net._ipv4_first('h', 443), [v4, v6, v6])
 
 
 if __name__ == '__main__':

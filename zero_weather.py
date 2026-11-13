@@ -22,6 +22,8 @@ import urllib.request
 
 from PIL import Image, ImageDraw, ImageFont
 
+import net
+
 W, H = 320, 170
 HOME = os.path.expanduser('~')
 DATA = os.path.join(HOME, '.local/share/zero-weather/weather.json')
@@ -461,6 +463,7 @@ def run():
 
 
 def main(argv):
+    net.prefer_ipv4()
     if '--fetch' in argv:
         data = fetch()
         save(data)
