@@ -117,6 +117,30 @@ class SettingsTest(unittest.TestCase):
         s.handle(KEY_F)
         self.assertEqual(s.sel, 1)
 
+    def test_unit_defaults_to_celsius(self):
+        self.assertEqual(zw.load_config()['unit'], 'C')
+
+    def test_toggle_unit_saves_without_refetch(self):
+        from settings_ui import Settings, K_DOWN, K_ENTER
+        s = Settings()
+        s.handle(K_DOWN)
+        s.handle(K_DOWN)
+        self.assertEqual(s.handle(K_ENTER), 'close')  # display-only, no refetch
+        self.assertEqual(zw.load_config()['unit'], 'F')
+        s = Settings()
+        s.sel = 2
+        s.handle(K_ENTER)
+        self.assertEqual(zw.load_config()['unit'], 'C')
+
+    def test_unit_survives_location_change(self):
+        zw.save_config(dict(zw.load_config(), unit='F', name='Ottawa'))
+        self.assertEqual(zw.load_config()['unit'], 'F')
+
+    def test_deg_converts_to_fahrenheit(self):
+        self.assertEqual(zw.deg(20), '20°')
+        self.assertEqual(zw.deg(20, 'F'), '68°')
+        self.assertEqual(zw.deg(-40, 'F'), '-40°')
+
     def test_locate_skips_gps_when_disabled(self):
         zw.save_config(dict(zw.load_config(), use_gps=False))
         orig = zw.read_gps

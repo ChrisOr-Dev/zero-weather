@@ -170,8 +170,9 @@ def fmt_ago(seconds):
     return f'{s // 3600}h ago'
 
 
-def deg(v):
-    return f'{round(v)}°'
+def deg(v, unit='C'):
+    """Format a Celsius value (Open-Meteo's unit) in the chosen unit."""
+    return f'{round(v * 9 / 5 + 32 if unit == "F" else v)}°'
 
 
 def load():
@@ -260,12 +261,14 @@ def read_gps(wait=GPS_WAIT):
 
 
 def load_config():
-    cfg = dict(DEFAULT_PLACE, use_gps=True)
+    cfg = dict(DEFAULT_PLACE, use_gps=True, unit='C')
     try:
         with open(CONFIG) as f:
             raw = json.load(f)
         cfg.update(name=str(raw['name']), lat=float(raw['lat']), lon=float(raw['lon']))
         cfg['use_gps'] = bool(raw.get('use_gps', True))
+        if raw.get('unit') in ('C', 'F'):
+            cfg['unit'] = raw['unit']
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return cfg
@@ -275,7 +278,7 @@ def save_config(cfg):
     os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
     tmp = CONFIG + '.tmp'
     with open(tmp, 'w') as f:
-        json.dump({k: cfg[k] for k in ('name', 'lat', 'lon', 'use_gps')}, f)
+        json.dump({k: cfg[k] for k in ('name', 'lat', 'lon', 'use_gps', 'unit')}, f)
     os.replace(tmp, CONFIG)
 
 
@@ -297,7 +300,7 @@ def fetch():
     return data
 
 
-def render(data, now=None, busy=False, error=None):
+def render(data, now=None, busy=False, error=None, unit='C'):
     now = now or time.time()
     img = Image.new('RGB', (W, H), BG)
     d = ImageDraw.Draw(img)
@@ -320,14 +323,17 @@ def render(data, now=None, busy=False, error=None):
     if cur:
         kind, label = describe(cur['weather_code'])
         draw_icon(d, 42, 62, 56, kind, bool(cur.get('is_day', 1)))
-        d.text((80, 34), deg(cur['temperature_2m']), font=F_TEMP, fill=FG)
+        temp = deg(cur['temperature_2m'], unit)
+        d.text((80, 34), temp, font=F_TEMP, fill=FG)
+        d.text((82 + d.textlength(temp, font=F_TEMP), 40), unit, font=F_TITLE, fill=DIM)
         d.text((82, 80), label, font=F_TEXT, fill=FG)
         x = 206
-        rows = [f"Feels {deg(cur['apparent_temperature'])}",
+        rows = [f"Feels {deg(cur['apparent_temperature'], unit)}",
                 f"Wind {round(cur['wind_speed_10m'])} km/h",
                 f"Hum {cur['relative_humidity_2m']}%"]
         if daily:
-            rows.insert(0, f"H {deg(daily['temperature_2m_max'][0])} L {deg(daily['temperature_2m_min'][0])}")
+            rows.insert(0, f"H {deg(daily['temperature_2m_max'][0], unit)} "
+                           f"L {deg(daily['temperature_2m_min'][0], unit)}")
         for i, t in enumerate(rows):
             d.text((x, 34 + i * 16), t, font=F_TEXT, fill=FG if i == 0 else DIM)
     else:
@@ -342,7 +348,7 @@ def render(data, now=None, busy=False, error=None):
             kind, _ = describe(daily['weather_code'][i])
             d.text((x0 + 4, 106), name, font=F_DAY, fill=FG)
             draw_icon(d, x0 + col_w - 22, 115, 26, kind, True)
-            hi_lo = f"{deg(daily['temperature_2m_max'][i])}/{deg(daily['temperature_2m_min'][i])}"
+            hi_lo = f"{deg(daily['temperature_2m_max'][i], unit)}/{deg(daily['temperature_2m_min'][i], unit)}"
             d.text((x0 + 4, 122), hi_lo, font=F_SMALL, fill=FG)
             pop = daily.get('precipitation_probability_max', [None] * 3)[i]
             if pop is not None:
@@ -444,7 +450,8 @@ def run():
                 else:
                     key = (fetcher.version, int(now // 30))
                     if key != last_key:
-                        frame = to_rgb565(render(load(), now, fetcher.busy, fetcher.error))
+                        frame = to_rgb565(render(load(), now, fetcher.busy, fetcher.error,
+                                                 load_config()['unit']))
                         last_key = key
                 fb.seek(0)
                 if progress is None:
@@ -486,7 +493,7 @@ def main(argv):
             s.tick()
             s.render().save(f'{stem}-results.png')
             return
-        render(data).save(out)
+        render(data, unit=load_config()['unit']).save(out)
     else:
         run()
 

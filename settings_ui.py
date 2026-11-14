@@ -23,6 +23,7 @@ for _row, _start in (('qwertyuiop', 16), ('asdfghjkl', 30), ('zxcvbnm', 44)):
 
 MAX_INPUT = 60
 ROW_H = 18
+MENU_ROWS = 3  # GPS, fixed location, temperature unit
 
 
 def place_name(item):
@@ -75,14 +76,20 @@ class Settings:
     def _menu_key(self, code):
         if code == K_ESC:
             return 'close'
-        if code in UP_KEYS + DOWN_KEYS:
-            self.sel = 1 - self.sel
+        if code in UP_KEYS:
+            self.sel = (self.sel - 1) % MENU_ROWS
+        elif code in DOWN_KEYS:
+            self.sel = (self.sel + 1) % MENU_ROWS
         elif code == K_ENTER and self.sel == 0:
             self.cfg['use_gps'] = not self.cfg['use_gps']
             save_config(self.cfg)
             return 'saved'
-        elif code == K_ENTER:
+        elif code == K_ENTER and self.sel == 1:
             self.state, self.text, self.msg = 'input', '', ''
+        elif code == K_ENTER:  # unit only changes the display, no refetch
+            self.cfg['unit'] = 'F' if self.cfg['unit'] == 'C' else 'C'
+            save_config(self.cfg)
+            return 'close'
         return None
 
     def _input_key(self, code):
@@ -145,12 +152,14 @@ class Settings:
 
     def _draw_menu(self, d):
         on = self.cfg['use_gps']
-        self._row(d, 36, self.sel == 0, 'Use GPS (Cap LoRa)', 'ON' if on else 'OFF',
+        self._row(d, 34, self.sel == 0, 'Use GPS (Cap LoRa)', 'ON' if on else 'OFF',
                   GPS_TAG if on else DIM)
-        self._row(d, 60, self.sel == 1, 'Fixed location', self.cfg['name'])
-        d.text((14, 88), f"{self.cfg['lat']:.4f}, {self.cfg['lon']:.4f}", font=F_SMALL, fill=DIM)
-        d.text((14, 104), 'GPS is used when it has a fix;', font=F_SMALL, fill=DIM)
-        d.text((14, 118), 'otherwise the fixed location.', font=F_SMALL, fill=DIM)
+        self._row(d, 56, self.sel == 1, 'Fixed location', self.cfg['name'])
+        d.text((14, 73), f"{self.cfg['lat']:.4f}, {self.cfg['lon']:.4f}", font=F_SMALL, fill=DIM)
+        self._row(d, 92, self.sel == 2, 'Temperature unit',
+                  '°F' if self.cfg['unit'] == 'F' else '°C', ACCENT)
+        d.text((14, 116), 'GPS is used when it has a fix;', font=F_SMALL, fill=DIM)
+        d.text((14, 130), 'otherwise the fixed location.', font=F_SMALL, fill=DIM)
         self._hint(d, 'F/X select  ENTER change  ESC back')
 
     def _draw_input(self, d):
