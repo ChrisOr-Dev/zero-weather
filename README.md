@@ -19,7 +19,7 @@ Current weather and a 3-day forecast on the M5Stack CardputerZero's 320x170 scre
 | Main | R | Refresh |
 | Main | Hold ESC 3 s | Exit (a bar shows the countdown; let go to cancel) |
 | Settings | F / X | Move up / down |
-| Settings | ENTER | Toggle GPS / search / choose |
+| Settings | ENTER | Toggle GPS / search / choose / switch °C-°F |
 | Settings | ESC | Back |
 
 ## Install
@@ -28,7 +28,7 @@ From the CardputerZero AppStore (share code `WTHR`), or build the package yourse
 
 ```sh
 sh build-deb.sh "Your Name <you@example.com>"
-sudo dpkg -i zero-weather_1.0.1_all.deb
+sudo dpkg -i zero-weather_1.1.0_all.deb
 ```
 
 For development, copy this folder to `~/zero-weather` on the device and run `sudo sh ~/zero-weather/install.sh` to register it with the launcher.

@@ -1,12 +1,12 @@
 {
   "package_name": "zero-weather",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "app_name": "Weather",
   "bin_name": "zero-weather",
   "description": "Current weather and 3-day forecast for CardputerZero",
   "store": {
     "summary": "Current weather and 3-day forecast from Open-Meteo, with optional GPS location.",
-    "description": "Shows the current temperature, feels-like, humidity and wind, plus a 3-day forecast with rain chance. Data comes from Open-Meteo (no API key needed) and refreshes every 15 minutes.\n\nLocation: uses the Cap LoRa-1262 GPS when it has a fix; otherwise a fixed place you search for in Settings.\n\nKeys: S settings, R refresh, hold ESC 3 seconds to exit. In Settings, F/X move up/down and ENTER selects.",
+    "description": "Shows the current temperature, feels-like, humidity and wind, plus a 3-day forecast with rain chance. Data comes from Open-Meteo (no API key needed) and refreshes every 15 minutes.\n\nLocation: uses the Cap LoRa-1262 GPS when it has a fix; otherwise a fixed place you search for in Settings.\n\nTemperature can be shown in \u00b0C or \u00b0F (Settings).\n\nKeys: S settings, R refresh, hold ESC 3 seconds to exit. In Settings, F/X move up/down and ENTER selects.",
     "categories": ["Lifestyle"],
     "screenshots": ["screenshots/main.png", "screenshots/settings.png", "screenshots/search-results.png"],
     "icon": "packaging/icon.png",
