@@ -5,8 +5,11 @@ import urllib.request
 
 from PIL import Image, ImageDraw
 
-from zero_weather import (ACCENT, BG, DIM, F_SMALL, F_TEXT, F_TITLE, FG, GPS_TAG,
-                          H, HOT, LINE, W, load_config, save_config)
+import icons
+from zero_weather import (ACCENT, BG, DIM, F_SMALL, F_TAG, F_TEXT, F_TITLE, FG, GPS_TAG,
+                          H, HOT, LINE, W, WARN, load_config, save_config)
+
+OFF = (70, 78, 92)  # switch / segment background when not active
 
 GEOCODE_URL = ('https://nominatim.openstreetmap.org/search'
                '?format=jsonv2&addressdetails=1&limit=5&q={q}')
@@ -134,33 +137,51 @@ class Settings:
         d = ImageDraw.Draw(img)
         titles = {'menu': 'SETTINGS', 'input': 'SEARCH ADDRESS',
                   'searching': 'SEARCH ADDRESS', 'results': 'SELECT LOCATION'}
-        d.text((12, 6), titles[self.state], font=F_TITLE, fill=ACCENT)
+        if self.state == 'menu':
+            icons.ic_gear(d, 12, 7, 12, ACCENT, BG)
+        else:
+            icons.ic_pin(d, 12, 6, 13, ACCENT, BG)
+        d.text((30, 6), titles[self.state], font=F_TITLE, fill=ACCENT)
         d.line((12, 25, W - 12, 25), fill=LINE)
         getattr(self, '_draw_' + ('input' if self.state == 'searching' else self.state))(d)
         return img
 
-    def _row(self, d, y, selected, left, right='', right_fill=FG):
-        if selected:
-            d.rounded_rectangle((8, y - 2, W - 8, y + ROW_H - 4), radius=4, fill=LINE)
-        d.text((14, y), left, font=F_TEXT, fill=FG)
-        if right:
-            right = clip(d, right, F_TEXT, 130)
-            d.text((W - 14 - d.textlength(right, font=F_TEXT), y), right, font=F_TEXT, fill=right_fill)
-
-    def _hint(self, d, text):
-        d.text((12, H - 16), text, font=F_SMALL, fill=DIM)
+    def _hint(self, d, items):
+        icons.key_hints(d, items, F_TAG, DIM, W - 10, H - 16)
 
     def _draw_menu(self, d):
-        on = self.cfg['use_gps']
-        self._row(d, 34, self.sel == 0, 'Use GPS (Cap LoRa)', 'ON' if on else 'OFF',
-                  GPS_TAG if on else DIM)
-        self._row(d, 56, self.sel == 1, 'Fixed location', self.cfg['name'])
-        d.text((14, 73), f"{self.cfg['lat']:.4f}, {self.cfg['lon']:.4f}", font=F_SMALL, fill=DIM)
-        self._row(d, 92, self.sel == 2, 'Temperature unit',
-                  '°F' if self.cfg['unit'] == 'F' else '°C', ACCENT)
-        d.text((14, 116), 'GPS is used when it has a fix;', font=F_SMALL, fill=DIM)
-        d.text((14, 130), 'otherwise the fixed location.', font=F_SMALL, fill=DIM)
-        self._hint(d, 'F/X select  ENTER change  ESC back')
+        ys = (36, 64, 92)
+        d.rounded_rectangle((8, ys[self.sel] - 5, W - 8, ys[self.sel] + 19), radius=5, fill=LINE)
+        # GPS: on/off switch
+        y, on = ys[0], self.cfg['use_gps']
+        icons.ic_gps(d, 16, y, 14, GPS_TAG if on else DIM)
+        d.text((38, y), 'GPS', font=F_TEXT, fill=FG)
+        tx = W - 48
+        d.rounded_rectangle((tx, y, tx + 30, y + 14), radius=7, fill=GPS_TAG if on else OFF)
+        kx = tx + 23 if on else tx + 7
+        d.ellipse((kx - 5, y + 2, kx + 5, y + 12), fill=FG)
+        # Fixed location: name, coordinates, chevron (opens search)
+        y = ys[1]
+        icons.ic_pin(d, 16, y, 14, ACCENT, LINE if self.sel == 1 else BG)
+        coords = f"{self.cfg['lat']:.2f}, {self.cfg['lon']:.2f}"
+        cw = d.textlength(coords, font=F_SMALL)
+        d.text((W - 32 - cw, y + 1), coords, font=F_SMALL, fill=DIM)
+        d.text((38, y), clip(d, self.cfg['name'], F_TEXT, W - 78 - cw), font=F_TEXT, fill=FG)
+        icons.ic_chevron(d, W - 26, y + 2, 10, DIM)
+        # Unit: segmented C | F, active one filled
+        y = ys[2]
+        icons.ic_thermo(d, 16, y, 14, WARN)
+        d.text((38, y), 'Unit', font=F_TEXT, fill=FG)
+        for j, u in enumerate(('C', 'F')):
+            x0 = W - 78 + j * 30
+            active = self.cfg['unit'] == u
+            if active:
+                d.rounded_rectangle((x0, y - 1, x0 + 30, y + 15), radius=4, fill=ACCENT)
+            else:
+                d.rounded_rectangle((x0, y - 1, x0 + 30, y + 15), radius=4, outline=OFF)
+            d.text((x0 + 15, y + 7), '°' + u, font=F_TEXT, fill=BG if active else DIM, anchor='mm')
+        self._hint(d, [(['F', 'X'], icons.ic_updown), (['ENTER'], icons.ic_check),
+                       (['ESC'], icons.ic_back)])
 
     def _draw_input(self, d):
         d.text((14, 34), 'City or address (English):', font=F_SMALL, fill=DIM)
@@ -171,7 +192,7 @@ class Settings:
         d.text((16, 57), shown + ('' if self.state == 'searching' else '_'), font=F_TEXT, fill=FG)
         if self.state == 'searching':
             d.text((14, 86), 'Searching...', font=F_TEXT, fill=ACCENT)
-        self._hint(d, 'ENTER search  DEL erase  ESC back')
+        self._hint(d, [(['ENTER'], icons.ic_check), (['ESC'], icons.ic_back)])
 
     def _draw_results(self, d):
         if not self.results:
@@ -182,4 +203,5 @@ class Settings:
                 d.rounded_rectangle((8, y - 2, W - 8, y + ROW_H - 4), radius=4, fill=LINE)
             d.text((14, y), clip(d, r['label'], F_SMALL, W - 28), font=F_SMALL,
                    fill=FG if i == self.sel else DIM)
-        self._hint(d, 'F/X select  ENTER choose  ESC back')
+        self._hint(d, [(['F', 'X'], icons.ic_updown), (['ENTER'], icons.ic_check),
+                       (['ESC'], icons.ic_back)])

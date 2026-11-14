@@ -14,7 +14,6 @@ Usage:
 import json
 import math
 import os
-import select
 import sys
 import threading
 import time
@@ -22,16 +21,15 @@ import urllib.request
 
 from PIL import Image, ImageDraw, ImageFont
 
+import icons
 import net
+from gps import parse_nmea, read_gps  # noqa: F401  (parse_nmea re-exported for tests)
 
 W, H = 320, 170
 HOME = os.path.expanduser('~')
 DATA = os.path.join(HOME, '.local/share/zero-weather/weather.json')
 CONFIG = os.path.join(HOME, '.config/zero-weather.json')
 DEFAULT_PLACE = {'name': 'Toronto', 'lat': 43.65, 'lon': -79.38}
-GPS_TTY = '/dev/ttyS0'
-GPS_POWER = '/sys/class/leds/ext_5v_out/brightness'
-GPS_WAIT = 4.0
 URL = ('https://api.open-meteo.com/v1/forecast'
        '?latitude={lat:.4f}&longitude={lon:.4f}'
        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,'
@@ -191,75 +189,6 @@ def save(data):
     os.replace(tmp, DATA)
 
 
-def nmea_coord(value, hemi):
-    if not value or not hemi:
-        return None
-    dot = value.index('.')
-    degrees = float(value[:dot - 2])
-    minutes = float(value[dot - 2:])
-    v = degrees + minutes / 60
-    return -v if hemi in 'SW' else v
-
-
-def parse_nmea(line):
-    """(lat, lon) from a valid RMC/GGA sentence with a fix, else None."""
-    if not line.startswith('$') or '*' not in line:
-        return None
-    body, _, csum = line[1:].partition('*')
-    calc = 0
-    for ch in body:
-        calc ^= ord(ch)
-    try:
-        if calc != int(csum[:2], 16):
-            return None
-        f = body.split(',')
-        if f[0].endswith('RMC') and len(f) > 6 and f[2] == 'A':
-            lat, lon = nmea_coord(f[3], f[4]), nmea_coord(f[5], f[6])
-        elif f[0].endswith('GGA') and len(f) > 6 and f[6] not in ('', '0'):
-            lat, lon = nmea_coord(f[2], f[3]), nmea_coord(f[4], f[5])
-        else:
-            return None
-    except (ValueError, IndexError):
-        return None
-    return (lat, lon) if lat is not None and lon is not None else None
-
-
-def read_gps(wait=GPS_WAIT):
-    """Position from the Cap LoRa-1262 GNSS, or None (no cap, no power, no fix)."""
-    try:
-        with open(GPS_POWER) as f:
-            if int(f.read().strip() or 0) == 0:
-                return None
-        fd = os.open(GPS_TTY, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
-    except (OSError, ValueError):
-        return None
-    try:
-        import termios
-        a = termios.tcgetattr(fd)
-        a[0] = 0
-        a[1] = 0
-        a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
-        a[3] = 0
-        a[4] = a[5] = termios.B115200
-        termios.tcsetattr(fd, termios.TCSANOW, a)
-        buf, end = b'', time.time() + wait
-        while time.time() < end:
-            if not select.select([fd], [], [], 0.3)[0]:
-                continue
-            buf += os.read(fd, 4096)
-            *lines, buf = buf.split(b'\n')
-            for raw in lines:
-                fix = parse_nmea(raw.decode('ascii', 'ignore').strip())
-                if fix:
-                    return fix
-            buf = buf[-512:]
-    except OSError:
-        return None
-    finally:
-        os.close(fd)
-    return None
-
-
 def load_config():
     cfg = dict(DEFAULT_PLACE, use_gps=True, unit='C')
     try:
@@ -307,13 +236,11 @@ def render(data, now=None, busy=False, error=None, unit='C'):
 
     place = (data or {}).get('place') or dict(DEFAULT_PLACE, source='fixed')
     if place.get('source') == 'gps':
-        d.rounded_rectangle((12, 6, 42, 21), radius=4, fill=GPS_TAG)
-        d.text((27, 14), 'GPS', font=F_TAG, fill=BG, anchor='mm')
-        d.text((48, 6), f"{place['lat']:.2f}, {place['lon']:.2f}", font=F_TITLE, fill=ACCENT)
+        icons.ic_gps(d, 12, 7, 12, GPS_TAG)
+        d.text((30, 6), f"{place['lat']:.2f}, {place['lon']:.2f}", font=F_TITLE, fill=ACCENT)
     else:
-        name = place['name'].upper()
-        d.text((12, 6), name, font=F_TITLE, fill=ACCENT)
-        d.text((16 + d.textlength(name, font=F_TITLE), 8), 'fixed', font=F_SMALL, fill=DIM)
+        icons.ic_pin(d, 12, 6, 13, ACCENT, BG)
+        d.text((30, 6), place['name'].upper(), font=F_TITLE, fill=ACCENT)
     clock = time.strftime('%a %H:%M', time.localtime(now))
     d.text((W - 12 - d.textlength(clock, font=F_TITLE), 6), clock, font=F_TITLE, fill=DIM)
     d.line((12, 25, W - 12, 25), fill=LINE)
@@ -326,16 +253,24 @@ def render(data, now=None, busy=False, error=None, unit='C'):
         temp = deg(cur['temperature_2m'], unit)
         d.text((80, 34), temp, font=F_TEMP, fill=FG)
         d.text((82 + d.textlength(temp, font=F_TEMP), 40), unit, font=F_TITLE, fill=DIM)
-        d.text((82, 80), label, font=F_TEXT, fill=FG)
-        x = 206
-        rows = [f"Feels {deg(cur['apparent_temperature'], unit)}",
-                f"Wind {round(cur['wind_speed_10m'])} km/h",
-                f"Hum {cur['relative_humidity_2m']}%"]
-        if daily:
-            rows.insert(0, f"H {deg(daily['temperature_2m_max'][0], unit)} "
-                           f"L {deg(daily['temperature_2m_min'][0], unit)}")
-        for i, t in enumerate(rows):
-            d.text((x, 34 + i * 16), t, font=F_TEXT, fill=FG if i == 0 else DIM)
+        d.text((82, 80), label, font=F_TEXT, fill=DIM)
+        x, s = 214, 11
+        rows = [(icons.ic_thermo, WARN, deg(cur['apparent_temperature'], unit)),
+                (icons.ic_wind, CLOUD, f"{round(cur['wind_speed_10m'])} km/h"),
+                (icons.ic_drop, ACCENT, f"{cur['relative_humidity_2m']}%")]
+        y = 34
+        if daily:  # today's high / low
+            hi = deg(daily['temperature_2m_max'][0], unit)
+            icons.ic_tri(d, x, y + 2, s, HOT, True)
+            d.text((x + 15, y), hi, font=F_TEXT, fill=FG)
+            lx = x + 23 + d.textlength(hi, font=F_TEXT)
+            icons.ic_tri(d, lx, y + 2, s, RAIN, False)
+            d.text((lx + 15, y), deg(daily['temperature_2m_min'][0], unit), font=F_TEXT, fill=FG)
+            y += 16
+        for icon, col, val in rows:
+            icon(d, x, y + 2, s, col)
+            d.text((x + 15, y), val, font=F_TEXT, fill=DIM)
+            y += 16
     else:
         d.text((12, 50), 'no weather data yet', font=F_TEXT, fill=DIM)
 
@@ -348,25 +283,33 @@ def render(data, now=None, busy=False, error=None, unit='C'):
             kind, _ = describe(daily['weather_code'][i])
             d.text((x0 + 4, 106), name, font=F_DAY, fill=FG)
             draw_icon(d, x0 + col_w - 22, 115, 26, kind, True)
-            hi_lo = f"{deg(daily['temperature_2m_max'][i], unit)}/{deg(daily['temperature_2m_min'][i], unit)}"
-            d.text((x0 + 4, 122), hi_lo, font=F_SMALL, fill=FG)
+            hi = deg(daily['temperature_2m_max'][i], unit)
+            d.text((x0 + 4, 122), hi, font=F_SMALL, fill=FG)
+            d.text((x0 + 10 + d.textlength(hi, font=F_SMALL), 122),
+                   deg(daily['temperature_2m_min'][i], unit), font=F_SMALL, fill=DIM)
             pop = daily.get('precipitation_probability_max', [None] * 3)[i]
             if pop is not None:
-                d.text((x0 + 4, 136), f'rain {pop}%', font=F_SMALL, fill=RAIN if pop >= 50 else DIM)
+                pc = RAIN if pop >= 50 else DIM
+                icons.ic_drop(d, x0 + 4, 138, 9, pc)
+                d.text((x0 + 17, 136), f'{pop}%', font=F_SMALL, fill=pc)
 
     fetched = (data or {}).get('fetched_at')
+    icon = icons.ic_clock
     if error:
-        foot, col = error[:30], HOT
+        foot, col, icon = error[:22], HOT, None
     elif busy:
-        foot, col = 'updating...', DIM
+        foot, col, icon = 'updating...', DIM, icons.ic_refresh
     elif not fetched:
-        foot, col = 'waiting for data', WARN
+        foot, col, icon = 'waiting for data', WARN, None
     else:
         age = now - fetched
-        foot, col = f'updated {fmt_ago(age)}', WARN if age > STALE_AFTER else DIM
-    d.text((12, H - 16), foot, font=F_SMALL, fill=col)
-    hint = 'S setup  R refresh  hold ESC'
-    d.text((W - 12 - d.textlength(hint, font=F_SMALL), H - 16), hint, font=F_SMALL, fill=LINE)
+        foot, col = fmt_ago(age), WARN if age > STALE_AFTER else DIM
+    if icon:
+        icon(d, 12, H - 15, 10, col)
+    d.text((26 if icon else 12, H - 16), foot, font=F_SMALL, fill=col)
+    gear = lambda d, x, y, s, c: icons.ic_gear(d, x, y, s, c, BG)  # noqa: E731
+    icons.key_hints(d, [(['S'], gear), (['R'], icons.ic_refresh), (['ESC'], icons.ic_power)],
+                    F_TAG, DIM, W - 10, H - 16)
     return img
 
 
